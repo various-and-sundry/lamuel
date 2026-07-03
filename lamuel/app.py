@@ -14,10 +14,12 @@ import subprocess
 
 from .brain import Brain
 from .config import Config
+from .control import EventBus, Switches
 from .head import HeadController
 from .hearing import SpeechRecognizer
 from .sight import VisionTracker
 from .voice import Voice
+from .web import WebPortal
 
 log = logging.getLogger(__name__)
 
@@ -25,11 +27,18 @@ log = logging.getLogger(__name__)
 class LamuelApp:
     def __init__(self, cfg: Config | None = None):
         self.cfg = cfg or Config()
+        # Shared runtime state the portal and subsystems both touch.
+        self.switches = Switches()
+        self.bus = EventBus()
         self.head = HeadController(self.cfg.head, graceful=self.cfg.graceful_degradation)
-        self.vision = VisionTracker(self.cfg.vision, self.head, graceful=self.cfg.graceful_degradation)
-        self.voice = Voice(self.cfg.voice)
+        self.vision = VisionTracker(self.cfg.vision, self.head,
+                                    graceful=self.cfg.graceful_degradation, switches=self.switches)
+        self.voice = Voice(self.cfg.voice, switches=self.switches, bus=self.bus)
         self.brain = Brain(self.cfg.brain, self.head, self.vision, self.voice)
-        self.hearing = SpeechRecognizer(self.cfg.audio, graceful=self.cfg.graceful_degradation)
+        self.hearing = SpeechRecognizer(self.cfg.audio, graceful=self.cfg.graceful_degradation,
+                                        switches=self.switches, bus=self.bus)
+        self.portal = WebPortal(self.cfg.web, vision=self.vision,
+                                switches=self.switches, bus=self.bus)
 
     def _play_startup(self):
         try:
@@ -49,6 +58,7 @@ class LamuelApp:
 
         self.voice.set_default_sink()
         self.vision.start()
+        self.portal.start()
         # Everything is up (model warm, audio routed, vision tracking): the
         # chime is the last thing before we start listening, so it reliably
         # signals "ready" rather than firing mid-startup.

@@ -12,8 +12,10 @@ pyaudio>=0.2.13
 ollama>=0.3.0
 pyserial>=3.5
 opencv-python>=4.8   # skipped by setup.sh if the system already provides cv2
+flask>=3.0           # web control panel (optional; portal no-ops if absent)
 
 # System packages (install with apt, not pip):
 #   flite            -- text-to-speech
 #   mpv              -- audio playback
 #   portaudio19-dev  -- build dependency for pyaudio
+

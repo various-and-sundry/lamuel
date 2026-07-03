@@ -18,8 +18,10 @@ log = logging.getLogger(__name__)
 
 
 class Voice:
-    def __init__(self, cfg: VoiceConfig):
+    def __init__(self, cfg: VoiceConfig, switches=None, bus=None):
         self.cfg = cfg
+        self.switches = switches   # portal on/off flags (speech)
+        self.bus = bus             # portal event feed
         self._lock = threading.Lock()
         self._available = self._check()
 
@@ -56,7 +58,16 @@ class Voice:
         if not text:
             return
         print(f"Lamuel: {text}")
+        # Always report to the portal feed, even when muted, so the operator
+        # still sees what Lamuel is saying.
+        if self.bus is not None:
+            from .control import SAID
+            self.bus.emit(SAID, text)
         if not self._available:
+            return
+        # Speech can be switched off from the portal (the conversation switch);
+        # the reply is still generated and shown in the feed, just not vocalised.
+        if self.switches is not None and not self.switches.is_on("conversation"):
             return
 
         with self._lock:

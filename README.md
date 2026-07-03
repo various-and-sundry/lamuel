@@ -99,6 +99,36 @@ python run.py
 
 Then talk. Say hello, ask it to look left, or ask what it can see.
 
+### Web control panel
+
+Lamuel serves a browser console at `http://<the-Jetson's-IP>:8080/` (find the
+IP with `hostname -I`). Open it from any machine on the same network to:
+
+- **watch the live camera feed** as Lamuel sees it,
+- **follow a running log** of what Lamuel hears and says,
+- **toggle conversation** (listening and speaking together) **and head tracking** on and off, and
+- **shut the whole box down.**
+
+The panel is optional — if Flask isn't installed it's skipped and the robot
+runs as normal. It's on by default; set `LAMUEL_WEB=0` to disable it, or
+`LAMUEL_WEB_PORT` to move it.
+
+The **Shut down** button runs `sudo shutdown -h now`, which needs privileges.
+If Lamuel runs as a normal user, grant passwordless permission for just that
+command (replace `lamuel` with the account it runs as):
+
+```
+# /etc/sudoers.d/lamuel-poweroff  (edit with: sudo visudo -f ...)
+lamuel ALL=(root) NOPASSWD: /sbin/shutdown
+```
+
+Or point `LAMUEL_POWEROFF_CMD` at whatever your system uses (e.g.
+`systemctl poweroff`).
+
+> **Note:** the portal has no authentication and binds to all interfaces, so
+> keep it on a trusted LAN — anyone who can reach the IP can move the head and
+> power the box off.
+
 ### Off-robot / development
 
 Every hardware-touching subsystem degrades gracefully when
@@ -121,6 +151,10 @@ environment variables so you don't touch source on the robot:
 | `LAMUEL_MODEL`          | Ollama persona model                 | `lamuel`                     |
 | `LAMUEL_VISION_MODEL`   | image-description model              | `llava-phi3:3.8b`            |
 | `LAMUEL_VOSK_MODEL`     | path to the Vosk model directory     | `vosk-model-small-en-us-0.15`|
+| `LAMUEL_WEB`            | enable the browser control panel     | `1`                          |
+| `LAMUEL_WEB_HOST`       | address the panel binds to           | `0.0.0.0`                    |
+| `LAMUEL_WEB_PORT`       | port the panel listens on            | `8080`                       |
+| `LAMUEL_POWEROFF_CMD`   | command run by the shutdown button   | `sudo shutdown -h now`       |
 
 ## Notes on the rewrite
 
@@ -136,3 +170,4 @@ environment variables so you don't touch source on the robot:
 - **Safety + robustness.** Servo positions are clamped to configurable limits;
   the capture→describe→reply loop has a depth guard; failures are logged rather
   than fatal.
+

@@ -24,9 +24,11 @@ log = logging.getLogger(__name__)
 
 
 class SpeechRecognizer:
-    def __init__(self, cfg: AudioConfig, graceful: bool = True):
+    def __init__(self, cfg: AudioConfig, graceful: bool = True, switches=None, bus=None):
         self.cfg = cfg
         self.graceful = graceful
+        self.switches = switches   # portal on/off flags (hearing)
+        self.bus = bus             # portal event feed
         self._pyaudio = None
         self._stream = None
         self._rec = None
@@ -67,6 +69,22 @@ class SpeechRecognizer:
             return self._listen_typed(on_transcript)
         return self._listen_audio(on_transcript)
 
+    def _deliver(self, text: str, on_transcript):
+        """Filter, report, and forward one finalized transcript.
+
+        Drops noise phrases, and when hearing is switched off from the portal
+        drops the utterance entirely so Lamuel doesn't act on it.
+        """
+        text = text.strip()
+        if not text or text in self.cfg.ignore_phrases:
+            return
+        if self.switches is not None and not self.switches.is_on("conversation"):
+            return  # conversation disabled from the portal
+        if self.bus is not None:
+            from .control import HEARD
+            self.bus.emit(HEARD, text)
+        on_transcript(text)
+
     def _listen_audio(self, on_transcript):
         log.info("Listening...")
         try:
@@ -74,8 +92,7 @@ class SpeechRecognizer:
                 data = self._stream.read(self.cfg.chunk_size, exception_on_overflow=False)
                 if self._rec.AcceptWaveform(data):
                     text = json.loads(self._rec.Result()).get("text", "").strip()
-                    if text and text not in self.cfg.ignore_phrases:
-                        on_transcript(text)
+                    self._deliver(text, on_transcript)
         except KeyboardInterrupt:
             log.info("Stopped by user")
         finally:
@@ -89,8 +106,7 @@ class SpeechRecognizer:
                     text = input("you> ").strip()
                 except EOFError:
                     break
-                if text and text not in self.cfg.ignore_phrases:
-                    on_transcript(text)
+                self._deliver(text, on_transcript)
         except KeyboardInterrupt:
             log.info("Stopped by user")
 
@@ -103,3 +119,4 @@ class SpeechRecognizer:
             self._pyaudio.terminate()
             self._pyaudio = None
         log.info("Audio stream stopped")
+

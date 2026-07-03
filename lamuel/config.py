@@ -116,12 +116,28 @@ class BrainConfig:
 
 
 @dataclass
+class WebConfig:
+    # The browser control panel. Bind to 0.0.0.0 so it's reachable at the
+    # Jetson's IP from another machine on the network.
+    enabled: bool = _env("LAMUEL_WEB", True)
+    host: str = _env("LAMUEL_WEB_HOST", "0.0.0.0")
+    port: int = _env("LAMUEL_WEB_PORT", 8080)
+    # Frames per second for the live MJPEG stream. Kept modest so serving the
+    # feed doesn't starve the vision/LLM work.
+    stream_fps: int = _env("LAMUEL_WEB_FPS", 12)
+    # Command run by the portal's "Shut down" button. Powers off the whole box,
+    # so it needs privileges -- see the README for the passwordless-sudo note.
+    poweroff_command: str = _env("LAMUEL_POWEROFF_CMD", "sudo shutdown -h now")
+
+
+@dataclass
 class Config:
     audio: AudioConfig = field(default_factory=AudioConfig)
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
     head: HeadConfig = field(default_factory=HeadConfig)
     brain: BrainConfig = field(default_factory=BrainConfig)
+    web: WebConfig = field(default_factory=WebConfig)
 
     # When true, missing hardware (mic/camera/serial) logs a warning and the
     # affected subsystem no-ops instead of crashing, so you can develop and

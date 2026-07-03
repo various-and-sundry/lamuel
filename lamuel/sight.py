@@ -28,10 +28,11 @@ log = logging.getLogger(__name__)
 
 
 class VisionTracker:
-    def __init__(self, cfg: VisionConfig, head: HeadController, graceful: bool = True):
+    def __init__(self, cfg: VisionConfig, head: HeadController, graceful: bool = True, switches=None):
         self.cfg = cfg
         self.head = head
         self.graceful = graceful
+        self.switches = switches   # portal on/off flags (tracking)
 
         self._capture = None
         self._cascade = cv2.CascadeClassifier(
@@ -97,6 +98,16 @@ class VisionTracker:
         cv2.imwrite(self.cfg.snapshot_path, frame)
         log.info("Snapshot saved to %s", self.cfg.snapshot_path)
         return self.cfg.snapshot_path
+
+    def jpeg_frame(self):
+        """Return the most recent frame JPEG-encoded, or ``None`` if there is
+        no frame yet. Used by the portal's live camera stream."""
+        with self._frame_lock:
+            frame = None if self._latest_frame is None else self._latest_frame.copy()
+        if frame is None:
+            return None
+        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        return buf.tobytes() if ok else None
 
     def _play_shutter(self):
         try:
@@ -175,6 +186,10 @@ class VisionTracker:
         Ported from the original tracker: exponential smoothing, a deadband,
         and a re-evaluation interval, with yaw taking priority over pitch.
         """
+        # Head tracking can be switched off from the portal. The camera loop
+        # (and the live feed) keeps running; we just stop moving the head.
+        if self.switches is not None and not self.switches.is_on("tracking"):
+            return
         # +offset means the target is left / above centre (see sign convention).
         rel_x = -(target_x - width / 2)
         rel_y = -(target_y - height / 2)
@@ -197,3 +212,4 @@ class VisionTracker:
             self._frames_since_move = 0
         else:
             self._frames_since_move = 0
+
