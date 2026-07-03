@@ -1,0 +1,8 @@
+# Version constraints applied to every pip install (setup.sh passes this via -c).
+#
+# The Jetson's OpenCV / TensorFlow / mediapipe / openvino are all built against
+# the NumPy 1.x C-ABI. Installing NumPy 2.x breaks them at runtime with
+# "numpy.core.multiarray failed to import". Capping NumPy below 2 ensures pip
+# never pulls a 2.x build into the venv; the system's 1.x copy (visible through
+# --system-site-packages) satisfies this with no install at all.
+numpy<2

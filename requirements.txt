@@ -1,0 +1,19 @@
+# Python dependencies for Lamuel.
+#
+# numpy and OpenCV are intentionally NOT pinned here. On the Jetson both are
+# provided by the system image (OpenCV built with CUDA/GStreamer against the
+# NumPy 1.x ABI), and the venv is created with --system-site-packages so it
+# reuses them. Installing NumPy 2.x would shadow the system copy and break that
+# OpenCV at runtime, so constraints.txt caps NumPy at <2 for any install that
+# does happen. setup.sh also skips opencv-python when the system provides cv2.
+
+vosk>=0.3.45
+pyaudio>=0.2.13
+ollama>=0.3.0
+pyserial>=3.5
+opencv-python>=4.8   # skipped by setup.sh if the system already provides cv2
+
+# System packages (install with apt, not pip):
+#   flite            -- text-to-speech
+#   mpv              -- audio playback
+#   portaudio19-dev  -- build dependency for pyaudio
