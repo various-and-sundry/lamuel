@@ -117,7 +117,7 @@ fi
 # 5. Ollama models (persona + vision)
 # ---------------------------------------------------------------------------
 if command -v ollama >/dev/null 2>&1; then
-    info "Building the 'lamuel' persona (pulls base llava:7b if needed)..."
+    info "Building the 'lamuel' persona (pulls base llama3:8b if needed)..."
     ollama create lamuel -f Modelfile || warn "ollama create failed"
     info "Pulling the vision model (llava-phi3:3.8b)..."
     ollama pull llava-phi3:3.8b || warn "ollama pull failed"
@@ -137,3 +137,5 @@ To run Lamuel:
     export LAMUEL_MIC_INDEX=<index>
     python run.py
 DONE
+
+

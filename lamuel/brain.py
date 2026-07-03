@@ -108,7 +108,7 @@ class Brain:
                 lines = commands.normalize(full).split("\n")
                 # Every line but the last is finished; the last may still grow.
                 while dispatched < len(lines) - 1 and not hit_capture:
-                    hit_capture = self._dispatch_line(lines[dispatched], capture_depth)
+                    hit_capture = self._dispatch_line(lines[dispatched])
                     dispatched += 1
                 if hit_capture:
                     break
@@ -116,7 +116,7 @@ class Brain:
                 # Stream ended normally: flush the final pending line too.
                 lines = commands.normalize(full).split("\n")
                 while dispatched < len(lines) and not hit_capture:
-                    hit_capture = self._dispatch_line(lines[dispatched], capture_depth)
+                    hit_capture = self._dispatch_line(lines[dispatched])
                     dispatched += 1
         except Exception as exc:  # noqa: BLE001
             log.error("ollama chat failed: %s", exc)
@@ -125,7 +125,7 @@ class Brain:
         log.info("Replied in %.1fs", time.monotonic() - started)
         return full, hit_capture
 
-    def _dispatch_line(self, line: str, capture_depth: int) -> bool:
+    def _dispatch_line(self, line: str) -> bool:
         """Act on one line. Returns True if it was a CAPTURE request."""
         action = commands.classify(line)
         if isinstance(action, commands.Say):
@@ -171,3 +171,4 @@ class Brain:
         except Exception as exc:  # noqa: BLE001
             log.error("vision model failed: %s", exc)
             return "(vision model error)"
+
