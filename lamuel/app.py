@@ -48,8 +48,11 @@ class LamuelApp:
         self.brain.warm_up()
 
         self.voice.set_default_sink()
-        self._play_startup()
         self.vision.start()
+        # Everything is up (model warm, audio routed, vision tracking): the
+        # chime is the last thing before we start listening, so it reliably
+        # signals "ready" rather than firing mid-startup.
+        self._play_startup()
         log.info("Lamuel online. Speak to begin.")
         try:
             self.hearing.listen(self.brain.on_transcript)
