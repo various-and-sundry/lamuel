@@ -212,4 +212,3 @@ class VisionTracker:
             self._frames_since_move = 0
         else:
             self._frames_since_move = 0
-

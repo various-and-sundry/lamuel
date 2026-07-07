@@ -112,7 +112,9 @@ class HeadController:
         """
         limit = self._limit[axis]
         if not self.cfg.relative:
-            return max(-limit, min(limit, amount))
+            clamped = max(-limit, min(limit, amount))
+            self._position[axis] = clamped  # keep the estimate current
+            return clamped
 
         new_position = self._position[axis] + amount
         clamped = max(-limit, min(limit, new_position))

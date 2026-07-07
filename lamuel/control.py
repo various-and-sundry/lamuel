@@ -1,4 +1,3 @@
-
 """Shared runtime state that the web portal and the subsystems both touch.
 
 Two small, dependency-free pieces:
@@ -87,4 +86,3 @@ class EventBus:
     def unsubscribe(self, q: queue.Queue):
         with self._lock:
             self._subscribers.discard(q)
-

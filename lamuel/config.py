@@ -35,7 +35,12 @@ class AudioConfig:
     # Path to the unpacked Vosk model directory.
     model_path: str = _env("LAMUEL_VOSK_MODEL", "vosk-model-small-en-us-0.15")
     # Index of the input device as reported by ``python -m lamuel.tools.devices``.
+    # Indexes can shuffle between a login session and a boot service, so prefer
+    # selecting by name below when running unattended.
     device_index: int = _env("LAMUEL_MIC_INDEX", 1)
+    # Case-insensitive substring of the mic's name (from the devices tool). When
+    # set it takes priority over device_index and survives index reordering.
+    device_name: str = _env("LAMUEL_MIC_NAME", "")
     chunk_size: int = 8000
     # Transcripts equal to any of these are treated as noise and ignored.
     ignore_phrases: tuple = ("", "huh", "the")

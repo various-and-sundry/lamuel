@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover
 
 from .config import WebConfig
 from .control import EventBus, Switches
+from .system import Resources, volume_get, volume_mute, volume_set
 
 log = logging.getLogger(__name__)
 
@@ -53,11 +54,13 @@ def _placeholder_jpeg() -> bytes:
 
 
 class WebPortal:
-    def __init__(self, cfg: WebConfig, vision, switches: Switches, bus: EventBus):
+    def __init__(self, cfg: WebConfig, vision, head, switches: Switches, bus: EventBus):
         self.cfg = cfg
         self.vision = vision
+        self.head = head
         self.switches = switches
         self.bus = bus
+        self.resources = Resources()
         self._thread = None
         self._placeholder = _placeholder_jpeg()
         self._app = self._build_app() if Flask is not None else None
@@ -113,6 +116,35 @@ class WebPortal:
                         self.switches.set(name, bool(payload[name]))
                         log.info("Portal set %s -> %s", name, bool(payload[name]))
             return jsonify(self.switches.state())
+
+        @app.route("/api/head/nudge", methods=["POST"])
+        def head_nudge():
+            # Relative moves only -- there's no position feedback, so the head
+            # is driven by direction, never told to go to an absolute angle.
+            payload = request.get_json(silent=True) or {}
+            for axis in ("yaw", "pitch"):
+                if axis in payload:
+                    try:
+                        delta = int(payload[axis])
+                    except (TypeError, ValueError):
+                        continue
+                    if delta:
+                        self.head.look(axis, delta)
+            return jsonify({"ok": True})
+
+        @app.route("/api/volume", methods=["GET", "POST"])
+        def volume():
+            if request.method == "POST":
+                payload = request.get_json(silent=True) or {}
+                if "muted" in payload:
+                    return jsonify(volume_mute(bool(payload["muted"])))
+                if "volume" in payload:
+                    return jsonify(volume_set(payload["volume"]))
+            return jsonify(volume_get())
+
+        @app.route("/api/stats")
+        def stats_route():
+            return jsonify(self.resources.stats())
 
         @app.route("/api/shutdown", methods=["POST"])
         def shutdown():
@@ -253,6 +285,58 @@ _PAGE = r"""<!doctype html>
   .line.heard .msg { color:#cfe9ec; }
   .line .t { flex:none; color:var(--muted); font-size:11px; padding-top:2px; }
 
+  /* head joystick */
+  .col { display:flex; flex-direction:column; gap:18px; }
+  .head { padding:14px; }
+  .stick { position:relative; width:100%; aspect-ratio:1/1; max-width:200px; margin:6px auto 12px;
+    border-radius:50%; cursor:grab; touch-action:none;
+    background:radial-gradient(circle at center, rgba(255,182,56,.06), transparent 68%), #0d0a06;
+    border:1px solid var(--panel-edge); }
+  .stick.dragging { cursor:grabbing; }
+  .stick .ring { position:absolute; inset:24%; border-radius:50%;
+    border:1px dashed rgba(168,114,42,.35); pointer-events:none; }
+  .stick .knob { position:absolute; left:50%; top:50%; width:34%; height:34%;
+    transform:translate(-50%,-50%); border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle at 35% 30%, var(--amber), var(--amber-dim));
+    box-shadow:0 0 14px rgba(255,182,56,.5); transition:transform .12s ease-out; }
+  .stick.dragging .knob { transition:none; }
+  .stick:focus-visible { outline:2px solid var(--amber); outline-offset:3px; }
+  .axhint { display:flex; justify-content:space-between; font-size:10px; color:var(--muted);
+    letter-spacing:.14em; text-transform:uppercase; margin-top:2px; }
+  .stickhint { text-align:center; font-size:10px; color:var(--muted);
+    letter-spacing:.04em; margin-top:9px; }
+
+  /* volume */
+  .vol-row { padding:12px 12px 14px; border-top:1px solid rgba(42,31,16,.6); }
+  .vol-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .vol-head b { font-weight:600; letter-spacing:.04em; }
+  .vol-head .val { color:var(--amber); font-variant-numeric:tabular-nums; font-size:13px; }
+  .vol-wrap { display:flex; align-items:center; gap:10px; }
+  input[type=range].vol { -webkit-appearance:none; appearance:none; flex:1; height:4px;
+    border-radius:2px; background:#241a0d; outline:none; }
+  input[type=range].vol::-webkit-slider-thumb { -webkit-appearance:none; appearance:none;
+    width:16px; height:16px; border-radius:50%; background:var(--amber); cursor:pointer;
+    box-shadow:0 0 8px rgba(255,182,56,.5); }
+  input[type=range].vol::-moz-range-thumb { width:16px; height:16px; border:0; border-radius:50%;
+    background:var(--amber); cursor:pointer; box-shadow:0 0 8px rgba(255,182,56,.5); }
+  input[type=range].vol:focus-visible { outline:2px solid var(--amber); outline-offset:4px; }
+  input[type=range].vol:disabled { opacity:.4; }
+  button.mute { flex:none; padding:0 11px; height:30px; background:transparent;
+    border:1px solid var(--panel-edge); border-radius:4px; color:var(--muted); cursor:pointer;
+    font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; }
+  button.mute.on { color:var(--danger); border-color:var(--danger); }
+  button.mute:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+
+  /* host stats */
+  .stats { padding:13px 14px; display:flex; flex-direction:column; gap:12px; }
+  .stat { display:flex; align-items:center; gap:11px; font-size:12px; }
+  .stat .lbl { flex:none; width:34px; color:var(--muted); letter-spacing:.12em; }
+  .stat .bar { flex:1; height:6px; border-radius:3px; background:#241a0d; overflow:hidden; }
+  .stat .bar i { display:block; height:100%; width:0;
+    background:linear-gradient(90deg,var(--amber-dim),var(--amber)); transition:width .5s ease; }
+  .stat .pct { flex:none; width:46px; text-align:right; color:var(--amber);
+    font-variant-numeric:tabular-nums; }
+
   .overlay { position:fixed; inset:0; background:rgba(5,3,2,.92); display:none;
     align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:10; }
   .overlay.show { display:flex; }
@@ -269,6 +353,7 @@ _PAGE = r"""<!doctype html>
   </header>
 
   <div class="grid">
+    <div class="col">
     <section class="panel">
       <h2>Camera</h2>
       <div class="viewport">
@@ -277,6 +362,30 @@ _PAGE = r"""<!doctype html>
         <span class="bracket tl"></span><span class="bracket tr"></span>
         <span class="bracket bl"></span><span class="bracket br"></span>
         <span class="cross"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Host</h2>
+      <div class="stats">
+        <div class="stat"><span class="lbl">CPU</span><div class="bar"><i id="cpubar"></i></div><span class="pct" id="cpupct">&mdash;</span></div>
+        <div class="stat"><span class="lbl">RAM</span><div class="bar"><i id="rambar"></i></div><span class="pct" id="rampct">&mdash;</span></div>
+        <div class="stat"><span class="lbl">GPU</span><div class="bar"><i id="gpubar"></i></div><span class="pct" id="gpupct">&mdash;</span></div>
+      </div>
+    </section>
+    </div>
+
+    <div class="col">
+    <section class="panel">
+      <h2>Head</h2>
+      <div class="head">
+        <div class="stick" id="stick" tabindex="0" role="application"
+             aria-label="Head joystick. Drag or use arrow keys to move the head; left and right pan, up and down tilt.">
+          <span class="ring"></span>
+          <span class="knob" id="knob"></span>
+        </div>
+        <div class="axhint"><span>&#9664; pan &#9654;</span><span>&#9650; tilt &#9660;</span></div>
+        <div class="stickhint">Springs back to centre &middot; hold a direction to keep moving</div>
       </div>
     </section>
 
@@ -292,10 +401,18 @@ _PAGE = r"""<!doctype html>
           <span class="toggle"><input type="checkbox" data-sw="tracking"><span class="track"></span><span class="knob"></span></span>
         </label>
       </div>
+      <div class="vol-row">
+        <div class="vol-head"><b>Volume</b><span class="val" id="volval">&mdash;</span></div>
+        <div class="vol-wrap">
+          <input type="range" id="vol" class="vol" min="0" max="100" value="50" aria-label="System volume">
+          <button class="mute" id="mute">Mute</button>
+        </div>
+      </div>
       <div class="danger-zone">
         <button class="power" id="power">Shut down box</button>
       </div>
     </section>
+    </div>
   </div>
 
   <section class="panel" style="margin-top:18px;">
@@ -364,9 +481,114 @@ _PAGE = r"""<!doctype html>
     es.onerror = () => { dot.classList.remove('live'); conn.textContent = 'reconnecting…'; };
   }
 
+  // --- head joystick (relative moves only; no position feedback) ---
+  const stick = document.getElementById('stick');
+  const knob = document.getElementById('knob');
+  const MAX_STEP = 6;   // degrees per tick at full deflection
+  const TICK_MS = 140;  // how often we nudge while held
+  let offX = 0, offY = 0;   // knob offset, each in [-1, 1]
+  let holding = false;
+  let stickTimer = null;
+
+  function placeKnob(fx, fy){
+    const mag = Math.hypot(fx, fy);
+    if (mag > 1){ fx /= mag; fy /= mag; }   // clamp into the circle
+    offX = fx; offY = fy;
+    knob.style.transform =
+      `translate(calc(-50% + ${fx * 50}%), calc(-50% + ${fy * 50}%))`;
+  }
+  function recenterKnob(){ offX = offY = 0; knob.style.transform = 'translate(-50%,-50%)'; }
+
+  async function sendNudge(dyaw, dpitch){
+    if (!dyaw && !dpitch) return;
+    try {
+      await fetch('/api/head/nudge', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({yaw: dyaw, pitch: dpitch})});
+    } catch(e){ /* ignore; next tick retries */ }
+  }
+  function tick(){
+    // screen +x = right, +y = down. Head: +yaw = left, +pitch = up.
+    sendNudge(Math.round(-offX * MAX_STEP), Math.round(-offY * MAX_STEP));
+  }
+  function startHold(){ if (!stickTimer){ tick(); stickTimer = setInterval(tick, TICK_MS); } }
+  function stopHold(){ clearInterval(stickTimer); stickTimer = null; }
+
+  function knobFromEvent(e){
+    const r = stick.getBoundingClientRect();
+    placeKnob((e.clientX - (r.left + r.width/2)) / (r.width/2),
+              (e.clientY - (r.top + r.height/2)) / (r.height/2));
+  }
+  stick.addEventListener('pointerdown', (e) => {
+    holding = true; stick.classList.add('dragging'); stick.setPointerCapture(e.pointerId);
+    knobFromEvent(e); startHold();
+  });
+  stick.addEventListener('pointermove', (e) => { if (holding) knobFromEvent(e); });
+  function release(e){
+    holding = false; stick.classList.remove('dragging');
+    try { stick.releasePointerCapture(e.pointerId); } catch(_){}
+    stopHold(); recenterKnob();
+  }
+  stick.addEventListener('pointerup', release);
+  stick.addEventListener('pointercancel', release);
+
+  // keyboard: each arrow press is a single nudge
+  stick.addEventListener('keydown', (e) => {
+    const m = { ArrowLeft:{yaw:MAX_STEP}, ArrowRight:{yaw:-MAX_STEP},
+                ArrowUp:{pitch:MAX_STEP}, ArrowDown:{pitch:-MAX_STEP} }[e.key];
+    if (!m) return;
+    e.preventDefault(); sendNudge(m.yaw || 0, m.pitch || 0);
+  });
+
+  // --- volume ---
+  const vol = document.getElementById('vol');
+  const volval = document.getElementById('volval');
+  const muteBtn = document.getElementById('mute');
+  let muted = false;
+
+  function renderVol(v){
+    if (!v || v.volume == null){
+      volval.textContent = 'n/a'; vol.disabled = true; muteBtn.disabled = true; return;
+    }
+    vol.disabled = false; muteBtn.disabled = false;
+    vol.value = v.volume;
+    muted = v.muted;
+    volval.textContent = v.muted ? 'muted' : v.volume + '%';
+    muteBtn.classList.toggle('on', v.muted);
+    muteBtn.textContent = v.muted ? 'Muted' : 'Mute';
+  }
+  async function postVol(body){
+    try {
+      renderVol(await (await fetch('/api/volume', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json());
+    } catch(e){ /* leave as-is */ }
+  }
+  vol.addEventListener('input',  () => { volval.textContent = vol.value + '%'; });
+  vol.addEventListener('change', () => postVol({volume: parseInt(vol.value)}));
+  muteBtn.addEventListener('click', () => postVol({muted: !muted}));
+  (async () => { try { renderVol(await (await fetch('/api/volume')).json()); } catch(e){} })();
+
+  // --- host stats ---
+  const bars = {
+    cpu:[document.getElementById('cpubar'), document.getElementById('cpupct')],
+    ram:[document.getElementById('rambar'), document.getElementById('rampct')],
+    gpu:[document.getElementById('gpubar'), document.getElementById('gpupct')],
+  };
+  async function loadStats(){
+    try {
+      const s = await (await fetch('/api/stats')).json();
+      for (const k of ['cpu','ram','gpu']){
+        const [bar, pct] = bars[k]; const v = s[k];
+        if (v == null){ pct.textContent = '\u2014'; bar.style.width = '0'; }
+        else { pct.textContent = Math.round(v) + '%'; bar.style.width = Math.min(100, v) + '%'; }
+      }
+    } catch(e){ /* keep last */ }
+  }
+
   loadState();
   connect();
+  loadStats();
+  setInterval(loadStats, 1500);
 </script>
 </body>
 </html>"""
-

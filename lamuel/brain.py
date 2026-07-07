@@ -171,4 +171,3 @@ class Brain:
         except Exception as exc:  # noqa: BLE001
             log.error("vision model failed: %s", exc)
             return "(vision model error)"
-
